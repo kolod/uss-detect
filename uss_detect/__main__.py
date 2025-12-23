@@ -250,16 +250,18 @@ def detect_devices_at_baudrate(
             timeout=0.1
         )
         
+        total_addresses = USSProtocol.MAX_ADDRESS - USSProtocol.MIN_ADDRESS + 1
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TaskProgressColumn(),
+            TextColumn("[progress.percentage]{task.completed}/{task.total}"),
             console=console
         ) as progress:
             task = progress.add_task(
-                f"[cyan]Testing {baudrate} baud",
-                total=USSProtocol.MAX_ADDRESS - USSProtocol.MIN_ADDRESS + 1
+                f"[cyan]Testing {baudrate:>6} baud",
+                total=total_addresses
             )
             
             for address in range(USSProtocol.MIN_ADDRESS, USSProtocol.MAX_ADDRESS + 1):
@@ -268,11 +270,11 @@ def detect_devices_at_baudrate(
                 
                 if test_device_at_address(ser, address):
                     found_addresses.append(address)
-                    progress.update(task, description=f"[green]Testing {baudrate} baud - Found device at address {address}")
+                    progress.update(task, description=f"[green]Testing {baudrate:>6} baud - Found device at address {address}")
                     
                     if not force_all:
                         # If found a device and not forcing all, we found the baudrate
-                        progress.update(task, completed=USSProtocol.MAX_ADDRESS - USSProtocol.MIN_ADDRESS + 1)
+                        progress.update(task, completed=total_addresses)
                         break
                 
                 progress.advance(task)
@@ -390,11 +392,11 @@ GitHub: https://github.com/kolod
             console.print(f"  • Address: [bold]{addr}[/bold]")
     else:
         console.print("[yellow]No USS devices detected[/yellow]")
-        console.print("\n[dim]Possible reasons:")
-        console.print("  • No devices connected")
-        console.print("  • Wrong serial port")
-        console.print("  • Devices not powered")
-        console.print("  • Non-standard baudrate (try --force-all)[/dim]")
+        console.print("\n[dim]Possible reasons:[/dim]")
+        console.print("[dim]  • No devices connected[/dim]")
+        console.print("[dim]  • Wrong serial port[/dim]")
+        console.print("[dim]  • Devices not powered[/dim]")
+        console.print("[dim]  • Non-standard baudrate (try --force-all)[/dim]")
     
     console.print("=" * 50 + "\n")
 
