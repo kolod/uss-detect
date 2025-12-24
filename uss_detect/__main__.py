@@ -239,52 +239,58 @@ def select_serial_port(config: Config) -> serial.tools.list_ports_common.ListPor
     return ports[int(choice) - 1]
 
 
-def test_device_at_address(ser: serial.Serial, address: int, timeout: float = 0.1) -> bool:
+def test_device_at_address(ser: serial.Serial, address: int, timeout: float = 0.1, retries: int = 1) -> bool:
     """Test if USS device responds at given address.
     
     Args:
         ser: Serial port connection
         address: Device address to test
         timeout: Response timeout in seconds
+        retries: Number of retry attempts
         
     Returns:
         True if device responds, False otherwise
     """
-    try:
-        # Clear buffers
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
-        
-        # Send ping telegram
-        telegram = USSProtocol.create_ping_telegram(address)
-        ser.write(telegram)
-        
-        # Wait for response
-        start_time = time.time()
-        response = bytearray()
-        
-        while time.time() - start_time < timeout:
-            if ser.in_waiting > 0:
-                response.extend(ser.read(ser.in_waiting))
-                
-                # Try to parse response
-                parsed = USSProtocol.parse_telegram(bytes(response))
-                if parsed and parsed.get('valid') and parsed.get('address') == address:
-                    return True
+    for attempt in range(retries):
+        try:
+            # Clear buffers
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
             
-            time.sleep(0.001)
+            # Send ping telegram
+            telegram = USSProtocol.create_ping_telegram(address)
+            ser.write(telegram)
+            
+            # Wait for response
+            start_time = time.time()
+            response = bytearray()
+            
+            while time.time() - start_time < timeout:
+                if ser.in_waiting > 0:
+                    response.extend(ser.read(ser.in_waiting))
+                    
+                    # Try to parse response
+                    parsed = USSProtocol.parse_telegram(bytes(response))
+                    if parsed and parsed.get('valid') and parsed.get('address') == address:
+                        return True
+                
+                time.sleep(0.001)
         
-        return False
+        except (serial.SerialException, OSError):
+            if attempt == retries - 1:
+                return False
+            continue
     
-    except (serial.SerialException, OSError):
-        return False
+    return False
 
 
 def detect_devices_at_baudrate(
     port_name: str,
     baudrate: int,
     force_all: bool = False,
-    addresses: Optional[List[int]] = None
+    addresses: Optional[List[int]] = None,
+    timeout: float = 0.1,
+    retries: int = 1
 ) -> List[int]:
     """Detect USS devices at specific baudrate.
     
@@ -293,6 +299,8 @@ def detect_devices_at_baudrate(
         baudrate: Baudrate to test
         force_all: If True, test all addresses even if device found
         addresses: List of specific addresses to test (None = test all)
+        timeout: Response timeout in seconds
+        retries: Number of retry attempts per address
         
     Returns:
         List of detected device addresses
@@ -333,7 +341,7 @@ def detect_devices_at_baudrate(
                 if exit_requested:
                     break
                 
-                if test_device_at_address(ser, address):
+                if test_device_at_address(ser, address, timeout=timeout, retries=retries):
                     found_addresses.append(address)
                     progress.update(task, description=f"[green]Testing {baudrate:>6} baud - Found device at address {address}")
                     
@@ -352,14 +360,22 @@ def detect_devices_at_baudrate(
     return found_addresses
 
 
-def detect_all_devices(port_name: str, force_all: bool = False, addresses: Optional[List[int]] = None) -> Tuple[int, List[int]]:
+def detect_all_devices(
+    port_name: str,
+    force_all: bool = False,
+    addresses: Optional[List[int]] = None,
+    timeout: float = 0.1,
+    retries: int = 1
+) -> Tuple[int, List[int]]:
     """Detect all USS devices and determine bus baudrate.
     
     Args:
         port_name: Serial port name
         force_all: If True, test all baudrate/address combinations
         addresses: List of specific addresses to test (None = test all)
-        
+        timeout: Response timeout in seconds
+        retries: Number of retry attempts per address
+
     Returns:
         Tuple of (baudrate, list of device addresses)
     """
@@ -378,11 +394,10 @@ def detect_all_devices(port_name: str, force_all: bool = False, addresses: Optio
         if exit_requested:
             break
         
-        found = detect_devices_at_baudrate(port_name, baudrate, force_all, addresses)
+        found = detect_devices_at_baudrate(port_name, baudrate, force_all, addresses, timeout, retries)
         
         if found:
             all_results[baudrate] = found
-            
             if not force_all:
                 # Found devices at this baudrate, no need to test others
                 return baudrate, found
@@ -409,6 +424,9 @@ Examples:
   uss-detect --id 0             # Scan only address 0
   uss-detect --id 0-10          # Scan addresses 0 through 10
   uss-detect --id 0,2,5         # Scan addresses 0, 2, and 5
+  uss-detect --timeout 0.2      # Use 200ms timeout for slower devices
+  uss-detect --retry 3          # Retry each address 3 times
+  uss-detect --id 1-5 --timeout 0.15 --retry 2  # Combined options
 
 Author: Oleksandr Kolodkin <oleksandr.kolodkin@ukr.net>
 GitHub: https://github.com/kolod
@@ -426,6 +444,22 @@ GitHub: https://github.com/kolod
         type=str,
         metavar='ADDRESSES',
         help='Specify address(es) to scan. Format: single (0), range (0-10), or comma-separated (0,2,3)'
+    )
+    
+    parser.add_argument(
+        '--timeout',
+        type=float,
+        default=0.1,
+        metavar='SECONDS',
+        help='Response timeout in seconds (default: 0.1)'
+    )
+    
+    parser.add_argument(
+        '--retry',
+        type=int,
+        default=1,
+        metavar='COUNT',
+        help='Number of retry attempts per address (default: 1)'
     )
     
     args = parser.parse_args()
@@ -462,17 +496,8 @@ GitHub: https://github.com/kolod
     if port_info.description:
         console.print(f"[dim]{port_info.description}[/dim]\n")
     
-    # Parse address range if specified
-    addresses = None
-    if args.id:
-        try:
-            addresses = parse_address_range(args.id)
-        except ValueError as e:
-            console.print(f"[red]Error: {e}[/red]")
-            sys.exit(1)
-    
     # Detect devices
-    baudrate, devices = detect_all_devices(port_name, args.force_all, addresses)
+    baudrate, devices = detect_all_devices(port_name, args.force_all, addresses, args.timeout, args.retry)
     
     # Display results
     console.print("\n" + "=" * 50)
