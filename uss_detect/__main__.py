@@ -28,6 +28,62 @@ console = Console()
 exit_requested = False
 
 
+def parse_address_range(address_arg: str) -> List[int]:
+    """Parse address range argument.
+    
+    Supported formats:
+    - Single address: "0"
+    - Range: "0-10"
+    - Comma-separated: "0,2,3"
+    
+    Args:
+        address_arg: Address specification string
+        
+    Returns:
+        List of addresses to scan
+        
+    Raises:
+        ValueError: If format is invalid or addresses out of range
+    """
+    addresses = set()
+    
+    # Split by commas for comma-separated values
+    parts = address_arg.split(',')
+    
+    for part in parts:
+        part = part.strip()
+        
+        # Check if it's a range
+        if '-' in part:
+            try:
+                start, end = part.split('-', 1)
+                start = int(start.strip())
+                end = int(end.strip())
+                
+                if start > end:
+                    raise ValueError(f"Invalid range: {part} (start > end)")
+                
+                for addr in range(start, end + 1):
+                    if not (USSProtocol.MIN_ADDRESS <= addr <= USSProtocol.MAX_ADDRESS):
+                        raise ValueError(f"Address {addr} out of valid range [{USSProtocol.MIN_ADDRESS}-{USSProtocol.MAX_ADDRESS}]")
+                    addresses.add(addr)
+            except ValueError as e:
+                if "invalid literal" in str(e):
+                    raise ValueError(f"Invalid range format: {part}")
+                raise
+        else:
+            # Single address
+            try:
+                addr = int(part)
+                if not (USSProtocol.MIN_ADDRESS <= addr <= USSProtocol.MAX_ADDRESS):
+                    raise ValueError(f"Address {addr} out of valid range [{USSProtocol.MIN_ADDRESS}-{USSProtocol.MAX_ADDRESS}]")
+                addresses.add(addr)
+            except ValueError:
+                raise ValueError(f"Invalid address: {part}")
+    
+    return sorted(list(addresses))
+
+
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully."""
     global exit_requested
@@ -226,7 +282,8 @@ def test_device_at_address(ser: serial.Serial, address: int, timeout: float = 0.
 def detect_devices_at_baudrate(
     port_name: str,
     baudrate: int,
-    force_all: bool = False
+    force_all: bool = False,
+    addresses: Optional[List[int]] = None
 ) -> List[int]:
     """Detect USS devices at specific baudrate.
     
@@ -234,6 +291,7 @@ def detect_devices_at_baudrate(
         port_name: Serial port name
         baudrate: Baudrate to test
         force_all: If True, test all addresses even if device found
+        addresses: List of specific addresses to test (None = test all)
         
     Returns:
         List of detected device addresses
@@ -250,7 +308,13 @@ def detect_devices_at_baudrate(
             timeout=0.1
         )
         
-        total_addresses = USSProtocol.MAX_ADDRESS - USSProtocol.MIN_ADDRESS + 1
+        # Use specified addresses or all addresses
+        if addresses is None:
+            addresses_to_test = list(range(USSProtocol.MIN_ADDRESS, USSProtocol.MAX_ADDRESS + 1))
+        else:
+            addresses_to_test = addresses
+        
+        total_addresses = len(addresses_to_test)
         
         with Progress(
             SpinnerColumn(),
@@ -264,7 +328,7 @@ def detect_devices_at_baudrate(
                 total=total_addresses
             )
             
-            for address in range(USSProtocol.MIN_ADDRESS, USSProtocol.MAX_ADDRESS + 1):
+            for address in addresses_to_test:
                 if exit_requested:
                     break
                 
@@ -287,12 +351,13 @@ def detect_devices_at_baudrate(
     return found_addresses
 
 
-def detect_all_devices(port_name: str, force_all: bool = False) -> Tuple[int, List[int]]:
+def detect_all_devices(port_name: str, force_all: bool = False, addresses: Optional[List[int]] = None) -> Tuple[int, List[int]]:
     """Detect all USS devices and determine bus baudrate.
     
     Args:
         port_name: Serial port name
         force_all: If True, test all baudrate/address combinations
+        addresses: List of specific addresses to test (None = test all)
         
     Returns:
         Tuple of (baudrate, list of device addresses)
@@ -303,13 +368,16 @@ def detect_all_devices(port_name: str, force_all: bool = False) -> Tuple[int, Li
     if force_all:
         console.print("[yellow]Force mode: Testing all baudrate/address combinations[/yellow]\n")
     
+    if addresses:
+        console.print(f"[cyan]Testing specific addresses: {', '.join(map(str, addresses))}[/cyan]\n")
+    
     all_results = {}
     
     for baudrate in USSProtocol.BAUDRATES:
         if exit_requested:
             break
         
-        found = detect_devices_at_baudrate(port_name, baudrate, force_all)
+        found = detect_devices_at_baudrate(port_name, baudrate, force_all, addresses)
         
         if found:
             all_results[baudrate] = found
@@ -337,6 +405,9 @@ def main():
 Examples:
   uss-detect                    # Normal detection (stop after finding devices)
   uss-detect --force-all        # Test all baudrate/address combinations
+  uss-detect --id 0             # Scan only address 0
+  uss-detect --id 0-10          # Scan addresses 0 through 10
+  uss-detect --id 0,2,5         # Scan addresses 0, 2, and 5
 
 Author: Oleksandr Kolodkin <oleksandr.kolodkin@ukr.net>
 GitHub: https://github.com/kolod
@@ -347,6 +418,13 @@ GitHub: https://github.com/kolod
         '--force-all',
         action='store_true',
         help='Force testing all baudrate/address combinations (for devices with incorrect baudrate)'
+    )
+    
+    parser.add_argument(
+        '--id',
+        type=str,
+        metavar='ADDRESSES',
+        help='Specify address(es) to scan. Format: single (0), range (0-10), or comma-separated (0,2,3)'
     )
     
     args = parser.parse_args()
@@ -374,8 +452,17 @@ GitHub: https://github.com/kolod
     if port_info.description:
         console.print(f"[dim]{port_info.description}[/dim]\n")
     
+    # Parse address range if specified
+    addresses = None
+    if args.id:
+        try:
+            addresses = parse_address_range(args.id)
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            sys.exit(1)
+    
     # Detect devices
-    baudrate, devices = detect_all_devices(port_name, args.force_all)
+    baudrate, devices = detect_all_devices(port_name, args.force_all, addresses)
     
     # Display results
     console.print("\n" + "=" * 50)
