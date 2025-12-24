@@ -110,7 +110,7 @@ class TestParseAddressRange:
     
     def test_address_above_maximum(self):
         """Test that address above maximum raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid address"):
+        with pytest.raises(ValueError, match="out of valid range"):
             parse_address_range("32")
     
     def test_range_with_invalid_start(self):
@@ -125,7 +125,7 @@ class TestParseAddressRange:
     
     def test_comma_list_with_invalid_address(self):
         """Test comma-separated list with one invalid address."""
-        with pytest.raises(ValueError, match="Invalid address"):
+        with pytest.raises(ValueError, match="out of valid range"):
             parse_address_range("1,5,100")
     
     # Edge cases
