@@ -462,6 +462,15 @@ GitHub: https://github.com/kolod
     if port_info.description:
         console.print(f"[dim]{port_info.description}[/dim]\n")
     
+    # Parse address range if specified
+    addresses = None
+    if args.id:
+        try:
+            addresses = parse_address_range(args.id)
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            sys.exit(1)
+    
     # Detect devices
     baudrate, devices = detect_all_devices(port_name, args.force_all, addresses)
     
