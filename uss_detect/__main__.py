@@ -75,11 +75,12 @@ def parse_address_range(address_arg: str) -> List[int]:
             # Single address
             try:
                 addr = int(part)
-                if not (USSProtocol.MIN_ADDRESS <= addr <= USSProtocol.MAX_ADDRESS):
-                    raise ValueError(f"Address {addr} out of valid range [{USSProtocol.MIN_ADDRESS}-{USSProtocol.MAX_ADDRESS}]")
-                addresses.add(addr)
             except ValueError:
                 raise ValueError(f"Invalid address: {part}")
+            
+            if not (USSProtocol.MIN_ADDRESS <= addr <= USSProtocol.MAX_ADDRESS):
+                raise ValueError(f"Address {addr} out of valid range [{USSProtocol.MIN_ADDRESS}-{USSProtocol.MAX_ADDRESS}]")
+            addresses.add(addr)
     
     return sorted(list(addresses))
 
@@ -428,6 +429,15 @@ GitHub: https://github.com/kolod
     )
     
     args = parser.parse_args()
+    
+    # Parse address range if specified (validate early before hardware interaction)
+    addresses = None
+    if args.id:
+        try:
+            addresses = parse_address_range(args.id)
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            sys.exit(1)
     
     # Set up signal handler for Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
