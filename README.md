@@ -8,6 +8,7 @@ Automatically detects Siemens USS protocol devices on a serial bus and determine
 ## Features
 
 - 🔍 **Automatic Device Detection** - Scans for all USS devices on the bus
+- 🎯 **Targeted Scanning** - Scan specific addresses or ranges with `--id` option
 - ⚡ **Smart Baudrate Detection** - Tests faster baudrates first for quick detection
 - 💾 **Port Memory** - Remembers your last used serial port and reconnects automatically
 - 🔌 **Auto-Connect** - Waits for serial port connection and auto-connects when available
@@ -61,6 +62,38 @@ uss-detect --force-all
 
 This mode tests all baudrate and address combinations to find misconfigured devices.
 
+### Specify Address Range
+
+To scan specific device addresses instead of the full range (0-31):
+
+```bash
+# Scan only address 0
+uss-detect --id 0
+
+# Scan address range 0-10
+uss-detect --id 0-10
+
+# Scan specific addresses
+uss-detect --id 0,2,5
+
+# Combine multiple ranges and addresses
+uss-detect --id 0-2,5,10-15
+
+# Use with force mode
+uss-detect --force-all --id 1-5
+```
+
+**Supported formats:**
+- Single address: `--id 0`
+- Range: `--id 0-10` (inclusive)
+- Comma-separated: `--id 0,2,5`
+- Mixed: `--id 0-2,5,10-12`
+
+This is useful when:
+- You know the device address and want faster detection
+- Testing specific devices on a multi-device bus
+- Troubleshooting individual devices
+
 ### Example Output
 
 ```
@@ -103,7 +136,7 @@ Found Devices:
 ### Device Detection
 
 1. **Baudrate Scanning**: Tests standard USS baudrates in order: 115200, 57600, 38400, 19200, 9600, 4800, 2400, 1200
-2. **Address Scanning**: For each baudrate, tests addresses 0-31
+2. **Address Scanning**: For each baudrate, tests addresses 0-31 (or specified range with `--id`)
 3. **Smart Exit**: Stops after finding first device (unless `--force-all` is used)
 4. **USS Protocol**: Uses proper USS telegram structure with BCC checksum verification
 
