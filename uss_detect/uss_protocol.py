@@ -7,7 +7,13 @@ USS (Universal Serial Interface Protocol) is used for communication with Siemens
 class USSProtocol:
     """Handles USS protocol telegram generation and parsing."""
     
-    # USS telegram structure: STX ADR LEN PKW1 PKW2 ... PKWn PZD1 PZD2 ... PZDm BCC
+    # USS telegram structure: STX LGE ADR [net data] BCC
+    # According to USS specification section A.4:
+    # - STX = Start of Text (0x02)
+    # - LGE = Telegram length (ADR + net characters + BCC)
+    # - ADR = Address byte
+    # - Net data = PKW and PZD words
+    # - BCC = Block check character (XOR checksum)
     STX = 0x02
     
     # Standard USS baudrates (ordered from fastest to slowest)
@@ -50,14 +56,20 @@ class USSProtocol:
         pkw = pkw or []
         pzd = pzd or []
         
-        # Build telegram
+        # Build telegram according to USS specification: STX LGE ADR [net data] BCC
         telegram = bytearray()
         telegram.append(USSProtocol.STX)
-        telegram.append(address)
         
-        # Length = number of words (each PKW/PZD is 2 bytes)
-        length = len(pkw) + len(pzd)
+        # Calculate net data length in bytes
+        net_data_bytes = (len(pkw) + len(pzd)) * 2
+        
+        # LGE = ADR (1 byte) + net data bytes + BCC (1 byte)
+        # According to spec: LGE = n + 2, where n is number of net characters
+        length = net_data_bytes + 2
         telegram.append(length)
+        
+        # Add address byte
+        telegram.append(address)
         
         # Add PKW words (high byte first)
         for word in pkw:
@@ -69,8 +81,9 @@ class USSProtocol:
             telegram.append((word >> 8) & 0xFF)
             telegram.append(word & 0xFF)
         
-        # Calculate and add BCC
-        bcc = USSProtocol.calculate_bcc(telegram)
+        # Calculate BCC on all bytes except STX (from LGE onwards)
+        # According to USS spec section A.4.4: BCC is XOR of LGE, ADR, and all net data
+        bcc = USSProtocol.calculate_bcc(telegram[1:])  # Skip STX at index 0
         telegram.append(bcc)
         
         return bytes(telegram)
@@ -91,26 +104,32 @@ class USSProtocol:
         if data[0] != USSProtocol.STX:
             return None
         
-        address = data[1]
-        length = data[2]
+        # According to USS spec: STX LGE ADR [net data] BCC
+        length = data[1]  # LGE byte
+        address = data[2]  # ADR byte
         
-        # Check minimum telegram size
-        expected_size = 4 + (length * 2)  # STX + ADR + LEN + (words*2) + BCC
+        # Calculate expected size
+        # LGE includes: ADR (1) + net characters (n) + BCC (1)
+        # Total telegram = STX (1) + LGE (1) + [LGE bytes]
+        expected_size = 2 + length  # STX + LGE + (ADR + net_data + BCC)
         if len(data) < expected_size:
             return None
         
-        # Verify BCC
+        # Verify BCC (last byte)
         bcc_received = data[expected_size - 1]
-        bcc_calculated = USSProtocol.calculate_bcc(data[:expected_size - 1])
+        bcc_calculated = USSProtocol.calculate_bcc(data[1:expected_size - 1])
         
         if bcc_received != bcc_calculated:
             return None
         
-        # Extract words
+        # Extract net data words (between ADR and BCC)
+        # Net data starts at index 3, ends before BCC
+        net_data_bytes = length - 2  # Subtract ADR and BCC from LGE
         words = []
-        for i in range(3, 3 + length * 2, 2):
-            word = (data[i] << 8) | data[i + 1]
-            words.append(word)
+        for i in range(3, 3 + net_data_bytes, 2):
+            if i + 1 < len(data):
+                word = (data[i] << 8) | data[i + 1]
+                words.append(word)
         
         return {
             'address': address,
