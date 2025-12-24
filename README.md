@@ -47,6 +47,7 @@ uss-detect
 ```
 
 This will:
+
 1. Connect to a serial port (using last port as default or waiting for connection)
 2. Scan for USS devices starting with fastest baudrate
 3. Display all found devices with their addresses and bus settings
@@ -84,15 +85,59 @@ uss-detect --force-all --id 1-5
 ```
 
 **Supported formats:**
+
 - Single address: `--id 0`
 - Range: `--id 0-10` (inclusive)
 - Comma-separated: `--id 0,2,5`
 - Mixed: `--id 0-2,5,10-12`
 
 This is useful when:
+
 - You know the device address and want faster detection
 - Testing specific devices on a multi-device bus
 - Troubleshooting individual devices
+
+### Advanced Options
+
+#### Timeout Configuration
+
+Adjust the response timeout for slower devices or noisy communication lines:
+
+```bash
+# Use 200ms timeout (default is 100ms)
+uss-detect --timeout 0.2
+
+# Use 500ms timeout for very slow devices
+uss-detect --timeout 0.5
+```
+
+**When to adjust timeout:**
+
+- Slow or overloaded devices that need more time to respond
+- Long cables or noisy environments causing signal delays
+- RS-485 networks with many devices
+
+#### Retry Configuration
+
+Set the number of retry attempts for each address to improve detection reliability:
+
+```bash
+# Try each address 3 times before giving up
+uss-detect --retry 3
+
+# Combine with timeout for maximum reliability
+uss-detect --timeout 0.2 --retry 3
+
+# Use with specific addresses
+uss-detect --id 0-5 --timeout 0.15 --retry 2
+```
+
+**When to use retries:**
+
+- Intermittent communication issues
+- High electrical noise environments
+- Bus with marginal signal quality
+- When initial scan misses known devices
 
 ### Example Output
 
@@ -143,6 +188,7 @@ Found Devices:
 ### USS Protocol Details
 
 USS telegrams follow this structure:
+
 - STX (0x02) - Start byte
 - ADR - Device address (0-31)
 - LEN - Number of data words
@@ -152,6 +198,7 @@ USS telegrams follow this structure:
 ## Configuration
 
 Configuration is stored in `~/.uss-detect.json` and includes:
+
 - Last used serial port
 - Hardware IDs for port identification
 - Port mapping for automatic reconnection
@@ -171,6 +218,7 @@ Configuration is stored in `~/.uss-detect.json` and includes:
 ## Tested Devices
 
 This tool works with Siemens devices supporting USS protocol:
+
 - MICROMASTER frequency converters
 - SINAMICS drives
 - Other USS-compatible Siemens devices
@@ -199,7 +247,7 @@ This tool works with Siemens devices supporting USS protocol:
 
 ### Project Structure
 
-```
+```sh
 uss-detect/
 ├── uss_detect/
 │   ├── __init__.py       # Package initialization
@@ -207,7 +255,7 @@ uss-detect/
 │   ├── config.py         # Configuration management
 │   └── uss_protocol.py   # USS protocol implementation
 ├── pyproject.toml        # Project metadata and dependencies
-└── README.md            # This file
+└── README.md             # This file
 ```
 
 ### Running from source
@@ -222,8 +270,9 @@ MIT License - see LICENSE file for details
 
 ## Author
 
-**Oleksandr Kolodkin**
-- Email: oleksandr.kolodkin@ukr.net
+### Oleksandr Kolodkin
+
+- Email: [oleksandr.kolodkin@ukr.net](mailto:oleksandr.kolodkin@ukr.net)
 - GitHub: [@kolod](https://github.com/kolod)
 
 ## Contributing
