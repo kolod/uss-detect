@@ -75,11 +75,12 @@ def parse_address_range(address_arg: str) -> List[int]:
             # Single address
             try:
                 addr = int(part)
-                if not (USSProtocol.MIN_ADDRESS <= addr <= USSProtocol.MAX_ADDRESS):
-                    raise ValueError(f"Address {addr} out of valid range [{USSProtocol.MIN_ADDRESS}-{USSProtocol.MAX_ADDRESS}]")
-                addresses.add(addr)
             except ValueError:
                 raise ValueError(f"Invalid address: {part}")
+            
+            if not (USSProtocol.MIN_ADDRESS <= addr <= USSProtocol.MAX_ADDRESS):
+                raise ValueError(f"Address {addr} out of valid range [{USSProtocol.MIN_ADDRESS}-{USSProtocol.MAX_ADDRESS}]")
+            addresses.add(addr)
     
     return sorted(list(addresses))
 
